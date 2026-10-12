@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-多人周报填报系统（10人规模，免登录版）
-任何人打开即可填写；填姓名 → 提交 / 修改本周周报；管理员密码查看全部 & 未填报统计 & 导出 Excel
+多人周报填报系统（免登录版）
+打开即填，自填姓名；本周重复提交自动覆盖（即修改）；
+管理员密码查看全部 / 未提交统计（基于实际填报记录）/ 导出 Excel + Word
 运行：streamlit run weekly_report.py
 """
 import streamlit as st
@@ -9,11 +10,12 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, date, timedelta
 from io import BytesIO
+from docx import Document
+from docx.shared import Pt, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # ============ 配置区（上线前改这里） ============
-STAFF = ["张三", "李四", "王五", "赵六", "钱七",
-         "孙八", "周九", "吴十", "郑十一", "王十二"]   # 改成你团队10人名字（用于未填报统计）
-ADMIN_PASSWORD = "admin@2026"                          # 管理员密码
+ADMIN_PASSWORD = "admin@2026"   # 管理员密码
 DB_FILE = "report.db"
 # ================================================
 
@@ -24,8 +26,7 @@ def week_key(today: date = None):
     return f"{iso[0]}-W{iso[1]:02d}", monday.isoformat()
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    conn = sqlite3.connect(DB_FILE); c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS week_report(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT, week_key TEXT, week_start TEXT,
@@ -57,13 +58,36 @@ def get_all_by_week(wk):
                         WHERE week_key=? ORDER BY name""", conn, params=(wk,))
     conn.close(); return df
 
+def build_docx(df, week_label):
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "微软雅黑"
+    style.font.size = Pt(10.5)
+
+    h = doc.add_heading(f"周报汇总（{week_label}）", level=1)
+    h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    for _, row in df.iterrows():
+        doc.add_heading(str(row["name"]), level=2)
+        for label, col in [("本周完成工作", "work_this"),
+                           ("下周工作计划", "work_next"),
+                           ("问题与风险", "risk")]:
+            p = doc.add_paragraph()
+            p.add_run(f"{label}：").bold = True
+            content = str(row[col]) if row[col] is not None else ""
+            p.add_run(content)
+        doc.add_paragraph()  # 空行
+    buf = BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
 init_db()
 wk, ws = week_key()
 
 st.title("📝 周报填报系统（免登录）")
-st.caption(f"本周：**{wk}**　周一日期：{ws}　直接填写即可，本周重复提交会覆盖已有内容。")
+st.caption(f"本周：**{wk}**　周一日期：{ws}　打开即填，本周重复提交会覆盖已有内容。")
 
-# 姓名输入（顶部固定）
 name = st.text_input("你的姓名", placeholder="输入姓名后填写下方周报")
 
 tab_fill, tab_admin = st.tabs(["📝 填报 / 修改周报", "📊 管理员面板"])
@@ -102,18 +126,16 @@ with tab_admin:
     sel_week = st.selectbox("选择周次", week_options, index=0)
 
     df = get_all_by_week(sel_week)
-    submitted = set(df["name"].tolist()) if not df.empty else set()
-    missing = [n for n in STAFF if n not in submitted]
+    submitted_names = sorted(df["name"].tolist()) if not df.empty else []
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("应提交", len(STAFF))
-    c2.metric("已提交", len(submitted))
-    c3.metric("未提交", len(missing))
+    c1, c2 = st.columns(2)
+    c1.metric("本周已提交人数", len(submitted_names))
+    c2.metric("本周填报人次", len(df))
 
-    if missing:
-        st.warning("未提交名单：" + "、".join(missing))
+    if submitted_names:
+        st.success("已提交人员：" + "、".join(submitted_names))
     else:
-        st.success("🎉 本周全部提交完成")
+        st.info("本周还没有人提交")
 
     st.divider()
     st.subheader(f"{sel_week} 全部周报")
@@ -121,11 +143,20 @@ with tab_admin:
         st.info("本周还没有人提交")
     else:
         st.dataframe(df, use_container_width=True, hide_index=True)
-        buf = BytesIO()
-        with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+
+        # 导出 Excel
+        buf_x = BytesIO()
+        with pd.ExcelWriter(buf_x, engine="openpyxl") as xw:
             df.to_excel(xw, index=False, sheet_name=sel_week)
-            pd.DataFrame({"未提交人员": missing}).to_excel(xw, index=False, sheet_name="未提交名单")
-        buf.seek(0)
-        st.download_button("📥 导出本周周报 Excel", buf,
-                           file_name=f"周报_{sel_week}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        buf_x.seek(0)
+
+        # 导出 Word
+        buf_w = build_docx(df, sel_week)
+
+        c1, c2 = st.columns(2)
+        c1.download_button("📥 导出 Excel", buf_x,
+                            file_name=f"周报_{sel_week}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        c2.download_button("📥 导出 Word", buf_w,
+                           file_name=f"周报_{sel_week}.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
