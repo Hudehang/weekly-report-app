@@ -17,13 +17,27 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 
 # ============ 配置区（上线前改这里） ============
 ADMIN_PASSWORD = "admin@2026"
-DEPT_NAME = "协同运营部"          # 导出 Word 标题里的部门名
-# 固定指标：(指标名称, 年度目标)。在首页直接展示，大家只填"完成值"。
+DEPT_NAME = "协同运营部"
+# 固定指标：(序号, 目标指标, 单位, 年度目标)。首页直接展示，只填"完成值"。
 INDICATORS = [
-    ("物流运力采购项目数", 50),
-    ("常规采购项目数", 20),
-    ("合同归档完成率", 100),
-    ("问题订单闭环率", 90),
+    (1,  "物资编码维度集中物资服务覆盖率", "%", 65),
+    (2,  "生产物资电商化下单率", "%", 50),
+    (3,  "集中供应生产物资即时供应率", "%", 95),
+    (4,  "实现在线协同的关键供应商个数（含渠道商）", "家", 80),
+    (5,  "累计投运中心仓数量", "个", 12),
+    (6,  "集团公司发电企业单位库存金额最高值", "元/kW", 4.8),
+    (7,  "实施生产物资仓储管理的电厂总数", "个", 105),
+    (8,  "集中仓储模式覆盖区域内期末整体单位库存金额降低比例", "%", 10),
+    (9,  "中心仓库存周转率", "次", 14),
+    (10, "“一码到底”功能应用品类数", "个", 30),
+    (11, "集中物流框架协议可视监管覆盖率（按物资采购金额占比统计）", "%", 50),
+    (12, "中心仓新能源配送车辆占比", "%", 60),
+    (13, "废旧物资集中处置成交金额", "万元", 35000),
+    (14, "闲置物资调剂金额", "万元", 5000),
+    (15, "在华能商城绿色低碳专区上架绿色商品项数", "项", 800),
+    (16, "在华能商城自主可控专区上架自主可控信息化相关产品品类项数", "项", 800),
+    (17, "品类物资需求预测准确率", "%", 65),
+    (18, "集中供应物资抽检率（供应商及品类抽检数量与集中供应物资供应商及品类占比）", "%", 2),
 ]
 DB_FILE = "report.db"
 # ================================================
@@ -161,38 +175,33 @@ def build_docx(rows_with_ind, week_label, monday, sunday):
 
     # 1. 本周指标完成情况
     doc.add_paragraph("1.本周指标完成情况").runs[0].bold = True
-    # 汇总所有人的指标到一张表
-    all_ind_rows = []
+    doc.add_paragraph("一、指标完成情况")
+    # 合并本周所有人填的完成值：按指标名取最新提交人的值
+    merged = {}
     for r in rows_with_ind:
         df = r["df_ind"]
         if df.empty:
             continue
         for _, ir in df.iterrows():
-            all_ind_rows.append({
-                "姓名": r["name"],
-                "指标名称": ir["指标名称"],
-                "年度目标": ir["年度目标"],
-                "完成值": ir["完成值"],
-                "差距": gap_text(ir["年度目标"], ir["完成值"]),
-            })
-    if all_ind_rows:
-        t = doc.add_table(rows=1, cols=5)
-        t.style = "Table Grid"
-        hdr = t.rows[0].cells
-        for i, hname in enumerate(["姓名", "指标名称", "年度目标", "完成值", "差距"]):
-            hdr[i].text = hname
-            for p in hdr[i].paragraphs:
-                for run in p.runs:
-                    run.bold = True
-        for row_data in all_ind_rows:
-            cells = t.add_row().cells
-            cells[0].text = row_data["姓名"]
-            cells[1].text = str(row_data["指标名称"])
-            cells[2].text = str(row_data["年度目标"])
-            cells[3].text = str(row_data["完成值"])
-            cells[4].text = row_data["差距"]
-    else:
-        doc.add_paragraph("（本周无指标填报）")
+            merged[ir["指标名称"]] = ir["完成值"]
+    # 6 列：序号/目标指标/单位/年度目标/完成值/差距
+    t = doc.add_table(rows=1, cols=6)
+    t.style = "Table Grid"
+    hdr = t.rows[0].cells
+    for i, hname in enumerate(["序号", "目标指标", "单位", "年度目标", "完成值", "差距"]):
+        hdr[i].text = hname
+        for p in hdr[i].paragraphs:
+            for run in p.runs:
+                run.bold = True
+    for sno, iname, unit, target in INDICATORS:
+        actual = merged.get(iname, "")
+        cells = t.add_row().cells
+        cells[0].text = str(sno)
+        cells[1].text = iname
+        cells[2].text = unit
+        cells[3].text = str(target)
+        cells[4].text = str(actual) if actual != "" else ""
+        cells[5].text = gap_text(target, actual) if actual != "" else ""
 
     # 2. 各板块重点工作进展与下周计划
     doc.add_paragraph("2.各板块重点工作进展与下周计划").runs[0].bold = True
@@ -239,15 +248,17 @@ with tab_fill:
         risk = st.text_area("存在问题 / 需要协调的风险", value=default_risk, height=80)
 
         st.markdown('**本周指标完成情况**（差距 = 年度目标 - 完成值；≤0 自动标记为"已完成"）')
-        # 固定指标表：指标名/年度目标从配置读，只让填完成值
+        # 固定指标表：序号/目标指标/单位/年度目标锁定，只让填完成值
         if rid:
             saved = get_indicators(rid).set_index("指标名称")["完成值"].to_dict()
         else:
             saved = {}
         rows = []
-        for iname, target in INDICATORS:
+        for sno, iname, unit, target in INDICATORS:
             rows.append({
-                "指标名称": iname,
+                "序号": sno,
+                "目标指标": iname,
+                "单位": unit,
                 "年度目标": float(target),
                 "完成值": float(saved.get(iname, 0) or 0),
             })
@@ -255,11 +266,13 @@ with tab_fill:
             pd.DataFrame(rows),
             num_rows="fixed",
             use_container_width=True,
-            disabled=["指标名称", "年度目标"],
+            disabled=["序号", "目标指标", "单位", "年度目标"],
             column_config={
-                "指标名称": st.column_config.TextColumn("指标名称", disabled=True),
-                "年度目标": st.column_config.NumberColumn("年度目标", format="%.2f", disabled=True),
-                "完成值": st.column_config.NumberColumn("完成值", format="%.2f"),
+                "序号": st.column_config.NumberColumn(width="small"),
+                "目标指标": st.column_config.TextColumn(width="large"),
+                "单位": st.column_config.TextColumn(width="small"),
+                "年度目标": st.column_config.NumberColumn(format="%.2f"),
+                "完成值": st.column_config.NumberColumn(format="%.2f"),
             },
             key="ind_editor"
         )
@@ -316,15 +329,12 @@ with tab_admin:
             e_wn = st.text_area("下周计划", value=rwn or "", height=110, key=f"ewn_{rid}")
             e_risk = st.text_area("问题与风险", value=rrisk or "", height=70, key=f"erisk_{rid}")
             saved_ind = get_indicators(rid).set_index("指标名称")["完成值"].to_dict()
-            rows = [{"指标名称": n, "年度目标": float(t),
-                     "完成值": float(saved_ind.get(n, 0) or 0)} for n, t in INDICATORS]
+            rows = [{"序号": sno, "目标指标": n, "单位": u, "年度目标": float(t),
+                     "完成值": float(saved_ind.get(n, 0) or 0)}
+                    for sno, n, u, t in INDICATORS]
             e_ind = st.data_editor(
                 pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
-                disabled=["指标名称", "年度目标"],
-                column_config={
-                    "指标名称": st.column_config.TextColumn(disabled=True),
-                    "年度目标": st.column_config.NumberColumn(format="%.2f", disabled=True),
-                },
+                disabled=["序号", "目标指标", "单位", "年度目标"],
                 key=f"eind_{rid}")
             b1, b2 = st.columns(2)
             if b1.button("💾 保存修改", key=f"save_{rid}", type="primary"):
@@ -376,21 +386,22 @@ with tab_admin:
 
         st.divider()
         # 导出
-        # Excel：两个 sheet（周报内容 + 指标明细）
         df_main = df[["name", "work_this", "work_next", "risk", "updated_at"]].rename(columns={
             "name": "姓名", "work_this": "本周完成", "work_next": "下周计划",
             "risk": "问题与风险", "updated_at": "更新时间"})
-        ind_rows = []
+        # 指标 sheet：18 行固定骨架，合并本周所有人填的完成值
+        merged = {}
         for r in rows_with_ind:
-            if r["df_ind"].empty:
-                ind_rows.append({"姓名": r["name"], "指标名称": "", "年度目标": "", "完成值": "", "差距": ""})
-            else:
-                for _, ir in r["df_ind"].iterrows():
-                    ind_rows.append({
-                        "姓名": r["name"], "指标名称": ir["指标名称"],
-                        "年度目标": ir["年度目标"], "完成值": ir["完成值"],
-                        "差距": gap_text(ir["年度目标"], ir["完成值"])
-                    })
+            for _, ir in r["df_ind"].iterrows():
+                merged[ir["指标名称"]] = ir["完成值"]
+        ind_rows = []
+        for sno, iname, unit, target in INDICATORS:
+            actual = merged.get(iname, "")
+            ind_rows.append({
+                "序号": sno, "目标指标": iname, "单位": unit,
+                "年度目标": target, "完成值": actual,
+                "差距": gap_text(target, actual) if actual != "" else ""
+            })
         df_ind_all = pd.DataFrame(ind_rows)
 
         buf_x = BytesIO()
