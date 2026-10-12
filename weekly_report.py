@@ -241,32 +241,29 @@ with tab_fill:
         st.info(f"已检测到你本周（{wk}）的周报，可直接修改后重新提交。")
 
     # 指标表（在本周完成工作上方）
-    st.markdown('**本周指标完成情况**（差距 = 年度目标 - 完成值；≤0 自动标记为"已完成"）')
+    st.markdown("**本周指标完成情况**")
     saved = get_indicators(rid).set_index("指标名称")["完成值"].to_dict() if rid else {}
     rows = []
     for sno, iname, unit, target in INDICATORS:
+        actual = float(saved.get(iname, 0) or 0)
         rows.append({
             "序号": sno, "目标指标": iname, "单位": unit,
-            "年度目标": float(target),
-            "完成值": float(saved.get(iname, 0) or 0),
+            "年度目标": float(target), "完成值": actual,
+            "差距": gap_text(target, actual),
         })
     df_ind = st.data_editor(
         pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
-        disabled=["序号", "目标指标", "单位", "年度目标"],
+        disabled=["序号", "目标指标", "单位", "年度目标", "差距"],
         column_config={
             "序号": st.column_config.NumberColumn(width="small"),
             "目标指标": st.column_config.TextColumn(width="large"),
             "单位": st.column_config.TextColumn(width="small"),
             "年度目标": st.column_config.NumberColumn(format="%.2f"),
             "完成值": st.column_config.NumberColumn(format="%.2f"),
+            "差距": st.column_config.TextColumn(width="small"),
         },
         key="ind_editor"
     )
-    if not df_ind.empty:
-        preview = df_ind.copy()
-        preview["差距"] = preview.apply(lambda r: gap_text(r["年度目标"], r["完成值"]), axis=1)
-        st.caption("差距预览：")
-        st.dataframe(preview, use_container_width=True, hide_index=True)
 
     wt = st.text_area("本周完成工作", value=default_this, height=130, placeholder="可多条，每行一条")
     wn = st.text_area("下周工作计划", value=default_next, height=130)
