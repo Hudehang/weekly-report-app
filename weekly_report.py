@@ -232,65 +232,56 @@ tab_fill, tab_admin = st.tabs(["📝 填报 / 修改周报", "📊 管理员面�
 
 # ---------- 填报页 ----------
 with tab_fill:
-    if not name.strip():
-        st.info("⬆ 先在上方输入你的姓名")
-    else:
-        existing = get_my_report(name.strip(), wk)
-        rid = existing[0] if existing else None
-        default_this = existing[1] if existing else ""
-        default_next = existing[2] if existing else ""
-        default_risk = existing[3] if existing else ""
-        if existing:
-            st.info(f"已检测到你本周（{wk}）的周报，可直接修改后重新提交。")
+    existing = get_my_report(name.strip(), wk) if name.strip() else None
+    rid = existing[0] if existing else None
+    default_this = existing[1] if existing else ""
+    default_next = existing[2] if existing else ""
+    default_risk = existing[3] if existing else ""
+    if existing:
+        st.info(f"已检测到你本周（{wk}）的周报，可直接修改后重新提交。")
 
-        wt = st.text_area("本周完成工作", value=default_this, height=130, placeholder="可多条，每行一条")
-        wn = st.text_area("下周工作计划", value=default_next, height=130)
-        risk = st.text_area("存在问题 / 需要协调的风险", value=default_risk, height=80)
+    # 指标表（在本周完成工作上方）
+    st.markdown('**本周指标完成情况**（差距 = 年度目标 - 完成值；≤0 自动标记为"已完成"）')
+    saved = get_indicators(rid).set_index("指标名称")["完成值"].to_dict() if rid else {}
+    rows = []
+    for sno, iname, unit, target in INDICATORS:
+        rows.append({
+            "序号": sno, "目标指标": iname, "单位": unit,
+            "年度目标": float(target),
+            "完成值": float(saved.get(iname, 0) or 0),
+        })
+    df_ind = st.data_editor(
+        pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
+        disabled=["序号", "目标指标", "单位", "年度目标"],
+        column_config={
+            "序号": st.column_config.NumberColumn(width="small"),
+            "目标指标": st.column_config.TextColumn(width="large"),
+            "单位": st.column_config.TextColumn(width="small"),
+            "年度目标": st.column_config.NumberColumn(format="%.2f"),
+            "完成值": st.column_config.NumberColumn(format="%.2f"),
+        },
+        key="ind_editor"
+    )
+    if not df_ind.empty:
+        preview = df_ind.copy()
+        preview["差距"] = preview.apply(lambda r: gap_text(r["年度目标"], r["完成值"]), axis=1)
+        st.caption("差距预览：")
+        st.dataframe(preview, use_container_width=True, hide_index=True)
 
-        st.markdown('**本周指标完成情况**（差距 = 年度目标 - 完成值；≤0 自动标记为"已完成"）')
-        # 固定指标表：序号/目标指标/单位/年度目标锁定，只让填完成值
-        if rid:
-            saved = get_indicators(rid).set_index("指标名称")["完成值"].to_dict()
+    wt = st.text_area("本周完成工作", value=default_this, height=130, placeholder="可多条，每行一条")
+    wn = st.text_area("下周工作计划", value=default_next, height=130)
+    risk = st.text_area("存在问题 / 需要协调的风险", value=default_risk, height=80)
+
+    if st.button("提交周报", type="primary"):
+        if not name.strip():
+            st.warning("⚠️ 姓名为必填项，请先填写姓名")
+        elif not (wt.strip() and wn.strip()):
+            st.warning("本周工作和下周计划不能为空")
         else:
-            saved = {}
-        rows = []
-        for sno, iname, unit, target in INDICATORS:
-            rows.append({
-                "序号": sno,
-                "目标指标": iname,
-                "单位": unit,
-                "年度目标": float(target),
-                "完成值": float(saved.get(iname, 0) or 0),
-            })
-        df_ind = st.data_editor(
-            pd.DataFrame(rows),
-            num_rows="fixed",
-            use_container_width=True,
-            disabled=["序号", "目标指标", "单位", "年度目标"],
-            column_config={
-                "序号": st.column_config.NumberColumn(width="small"),
-                "目标指标": st.column_config.TextColumn(width="large"),
-                "单位": st.column_config.TextColumn(width="small"),
-                "年度目标": st.column_config.NumberColumn(format="%.2f"),
-                "完成值": st.column_config.NumberColumn(format="%.2f"),
-            },
-            key="ind_editor"
-        )
-        # 实时预览差距
-        if not df_ind.empty:
-            preview = df_ind.copy()
-            preview["差距"] = preview.apply(lambda r: gap_text(r["年度目标"], r["完成值"]), axis=1)
-            st.caption("差距预览：")
-            st.dataframe(preview, use_container_width=True, hide_index=True)
-
-        if st.button("提交周报", type="primary"):
-            if not (wt.strip() and wn.strip()):
-                st.warning("本周工作和下周计划不能为空")
-            else:
-                new_rid = upsert_report(name.strip(), wk, monday,
-                                       wt.strip(), wn.strip(), risk.strip())
-                replace_indicators(new_rid, df_ind)
-                st.success("✅ 周报已提交！本周内可随时回来修改，再次提交会覆盖。")
+            new_rid = upsert_report(name.strip(), wk, monday,
+                                   wt.strip(), wn.strip(), risk.strip())
+            replace_indicators(new_rid, df_ind)
+            st.success("✅ 周报已提交！本周内可随时回来修改，再次提交会覆盖。")
 
 # ---------- 管理员面板 ----------
 with tab_admin:
