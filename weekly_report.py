@@ -223,6 +223,27 @@ wk, monday, sunday = week_key()
 if "editing_id" not in st.session_state:
     st.session_state["editing_id"] = None
 
+# 全局样式：字体小一号、表格铺满、隐藏滚动条
+st.markdown("""
+<style>
+    .stApp { font-size: 13px; }
+    .stDataEditor, .stDataFrame { font-size: 12px; }
+    .stDataEditor [data-testid="stDataFrameResizable"],
+    .stDataFrame  [data-testid="stDataFrameResizable"] {
+        overflow: hidden !important;
+    }
+    .stDataEditor tbody th, .stDataEditor tbody td,
+    .stDataFrame  tbody th, .stDataFrame  tbody td {
+        padding: 2px 6px !important;
+        font-size: 12px !important;
+    }
+    .stDataEditor thead th, .stDataFrame thead th {
+        font-size: 12px !important;
+        padding: 4px 6px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📝 周报填报系统（免登录）")
 st.caption(f"本周：**{wk}**（{monday}～{sunday}）　打开即填，本周重复提交会覆盖已有内容。")
 
