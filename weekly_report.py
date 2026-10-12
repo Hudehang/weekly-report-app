@@ -18,6 +18,13 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 # ============ 配置区（上线前改这里） ============
 ADMIN_PASSWORD = "admin@2026"
 DEPT_NAME = "协同运营部"          # 导出 Word 标题里的部门名
+# 固定指标：(指标名称, 年度目标)。在首页直接展示，大家只填"完成值"。
+INDICATORS = [
+    ("物流运力采购项目数", 50),
+    ("常规采购项目数", 20),
+    ("合同归档完成率", 100),
+    ("问题订单闭环率", 90),
+]
 DB_FILE = "report.db"
 # ================================================
 
@@ -232,17 +239,26 @@ with tab_fill:
         risk = st.text_area("存在问题 / 需要协调的风险", value=default_risk, height=80)
 
         st.markdown('**本周指标完成情况**（差距 = 年度目标 - 完成值；≤0 自动标记为"已完成"）')
+        # 固定指标表：指标名/年度目标从配置读，只让填完成值
         if rid:
-            df_ind_default = get_indicators(rid)
+            saved = get_indicators(rid).set_index("指标名称")["完成值"].to_dict()
         else:
-            df_ind_default = pd.DataFrame(columns=["指标名称", "年度目标", "完成值"])
+            saved = {}
+        rows = []
+        for iname, target in INDICATORS:
+            rows.append({
+                "指标名称": iname,
+                "年度目标": float(target),
+                "完成值": float(saved.get(iname, 0) or 0),
+            })
         df_ind = st.data_editor(
-            df_ind_default,
-            num_rows="dynamic",
+            pd.DataFrame(rows),
+            num_rows="fixed",
             use_container_width=True,
+            disabled=["指标名称", "年度目标"],
             column_config={
-                "指标名称": st.column_config.TextColumn("指标名称"),
-                "年度目标": st.column_config.NumberColumn("年度目标", format="%.2f"),
+                "指标名称": st.column_config.TextColumn("指标名称", disabled=True),
+                "年度目标": st.column_config.NumberColumn("年度目标", format="%.2f", disabled=True),
                 "完成值": st.column_config.NumberColumn("完成值", format="%.2f"),
             },
             key="ind_editor"
@@ -299,8 +315,16 @@ with tab_admin:
             e_wt = st.text_area("本周完成工作", value=rwt or "", height=110, key=f"ewt_{rid}")
             e_wn = st.text_area("下周计划", value=rwn or "", height=110, key=f"ewn_{rid}")
             e_risk = st.text_area("问题与风险", value=rrisk or "", height=70, key=f"erisk_{rid}")
+            saved_ind = get_indicators(rid).set_index("指标名称")["完成值"].to_dict()
+            rows = [{"指标名称": n, "年度目标": float(t),
+                     "完成值": float(saved_ind.get(n, 0) or 0)} for n, t in INDICATORS]
             e_ind = st.data_editor(
-                get_indicators(rid), num_rows="dynamic", use_container_width=True,
+                pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
+                disabled=["指标名称", "年度目标"],
+                column_config={
+                    "指标名称": st.column_config.TextColumn(disabled=True),
+                    "年度目标": st.column_config.NumberColumn(format="%.2f", disabled=True),
+                },
                 key=f"eind_{rid}")
             b1, b2 = st.columns(2)
             if b1.button("💾 保存修改", key=f"save_{rid}", type="primary"):
