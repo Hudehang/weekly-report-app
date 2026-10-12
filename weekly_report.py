@@ -223,23 +223,28 @@ wk, monday, sunday = week_key()
 if "editing_id" not in st.session_state:
     st.session_state["editing_id"] = None
 
-# 全局样式：字体小一号、表格铺满、隐藏滚动条
+# 全局样式：表格铺满全宽、字体小一号、长字段自动折行
 st.markdown("""
 <style>
     .stApp { font-size: 13px; }
-    .stDataEditor, .stDataFrame { font-size: 12px; }
-    .stDataEditor [data-testid="stDataFrameResizable"],
-    .stDataFrame  [data-testid="stDataFrameResizable"] {
-        overflow: hidden !important;
+    /* 表格容器铺满宽度 */
+    [data-testid="stDataFrameResizable"], [data-testid="stDataEditorResizable"] {
+        width: 100% !important;
+        overflow-x: hidden !important;
     }
-    .stDataEditor tbody th, .stDataEditor tbody td,
-    .stDataFrame  tbody th, .stDataFrame  tbody td {
-        padding: 2px 6px !important;
-        font-size: 12px !important;
+    /* 单元格长文本折行 */
+    .stDataEditor table, .stDataFrame table {
+        width: 100% !important;
+        table-layout: fixed !important;
     }
-    .stDataEditor thead th, .stDataFrame thead th {
+    .stDataEditor th, .stDataEditor td,
+    .stDataFrame  th, .stDataFrame  td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
         font-size: 12px !important;
-        padding: 4px 6px !important;
+        padding: 3px 6px !important;
+        line-height: 1.3 !important;
     }
 </style>
 """, unsafe_allow_html=True)
