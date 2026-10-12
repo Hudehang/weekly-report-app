@@ -252,7 +252,7 @@ with tab_fill:
             "差距": gap_text(target, actual),
         })
     df_ind = st.data_editor(
-        pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
+        pd.DataFrame(rows), num_rows="fixed", use_container_width=True, hide_index=True,
         disabled=["序号", "目标指标", "单位", "年度目标", "差距"],
         column_config={
             "序号": st.column_config.NumberColumn(width="small"),
@@ -321,7 +321,7 @@ with tab_admin:
                      "完成值": float(saved_ind.get(n, 0) or 0)}
                     for sno, n, u, t in INDICATORS]
             e_ind = st.data_editor(
-                pd.DataFrame(rows), num_rows="fixed", use_container_width=True,
+                pd.DataFrame(rows), num_rows="fixed", use_container_width=True, hide_index=True,
                 disabled=["序号", "目标指标", "单位", "年度目标"],
                 key=f"eind_{rid}")
             b1, b2 = st.columns(2)
